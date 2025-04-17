@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bagh Chal - Verified Version</title>
+    <style>
+        body {
+            background: #f0fff4;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin: 2rem;
+        }
+
+        h1 {
+            color: #2d3748;
+            text-align: center;
+            margin: 1rem 0;
+            font-size: 2.5em;
+        }
+
+        .board {
+            width: 500px;
+            height: 500px;
+            background: #c6f6d5;
+            position: relative;
+            border-radius: 15px;
+            background-image: 
+                linear-gradient(to right, #38a169 1px, transparent 1px),
+                linear-gradient(to bottom, #38a169 1px, transparent 1px);
+            background-size: 25% 25%;
+        }
+
+        .spot {
+            width: 30px;
+            height: 30px;
+            background: transparent;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .piece {
+            width: 40px;
+            height: 40px;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 2;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .tiger {
+            background-image: url('https://cdn-icons-png.flaticon.com/512/15707/15707353.png');
+        }
+
+        .goat {
+            background-image: url('https://cdn-icons-png.flaticon.com/512/4213/4213826.png');
+        }
+
+        .selected {
+            filter: drop-shadow(0 0 8px #f6e05e);
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
+        .suggestion {
+            width: 25px;
+            height: 25px;
+            background: rgba(72, 187, 120, 0.3);
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            animation: pulse 1.5s infinite;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .turn-indicator {
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            font-weight: bold;
+            margin: 1rem;
+            font-size: 1.2em;
+            transition: all 0.3s;
+        }
+
+        .goat-turn {
+            background: #ffffff;
+            color: #2d3748;
+            border: 3px solid #c6f6d5;
+        }
+
+        .tiger-turn {
+            background: #c53030;
+            color: white;
+            border: 3px solid #7b341e;
+        }
+
+        #info {
+            background: rgba(255,255,255,0.9);
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 1rem;
+            font-weight: 500;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(0.8); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(0.8); }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🐅 Bagh Chal 🐐</h1>
+        <div id="info"></div>
+        <div class="board" id="board"></div>
+        <div id="turnIndicator" class="turn-indicator"></div>
+    </div>
+
+    <script>
+        // Game Constants
+        const BOARD_SIZE = 5;
+        let gameState = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill('empty'));
+        let selectedPiece = null;
+        let currentPlayer = 'goat';
+        let phase = 1;
+        let goatsPlaced = 0;
+        let goatsCaptured = 0;
+
+        // DOM Elements
+        const board = document.getElementById('board');
+        const info = document.getElementById('info');
+        const turnIndicator = document.getElementById('turnIndicator');
+
+        // Initialize Board
+        function initBoard() {
+            // Clear existing board
+            board.innerHTML = '';
+            
+            // Create new spots
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                for (let j = 0; j < BOARD_SIZE; j++) {
+                    const spot = document.createElement('div');
+                    spot.className = 'spot';
+                    spot.style.left = `${(j * 100 / (BOARD_SIZE - 1))}%`;
+                    spot.style.top = `${(i * 100 / (BOARD_SIZE - 1))}%`;
+                    spot.dataset.row = i;
+                    spot.dataset.col = j;
+                    spot.addEventListener('click', handleClick);
+                    board.appendChild(spot);
+                }
+            }
+
+            // Place initial tigers
+            [[0,0], [0,4], [4,0], [4,4]].forEach(([row, col]) => {
+                gameState[row][col] = 'tiger';
+                createPiece('tiger', row, col);
+            });
+        }
+
+        function createPiece(type, row, col) {
+            const piece = document.createElement('div');
+            piece.className = `piece ${type}`;
+            piece.dataset.row = row;
+            piece.dataset.col = col;
+            piece.style.left = `${(col * 100 / (BOARD_SIZE - 1))}%`;
+            piece.style.top = `${(row * 100 / (BOARD_SIZE - 1))}%`;
+            piece.addEventListener('click', handleClick);
+            board.appendChild(piece);
+        }
+
+        function handleClick(e) {
+            const row = parseInt(e.target.dataset.row);
+            const col = parseInt(e.target.dataset.col);
+
+            if (phase === 1) handlePlacementPhase(row, col);
+            else handleMovementPhase(row, col);
+        }
+
+        function handlePlacementPhase(row, col) {
+            if (currentPlayer === 'goat' && gameState[row][col] === 'empty') {
+                placeGoat(row, col);
+                currentPlayer = 'tiger';
+                checkEarlyWin();
+                updateUI();
+            } else if (currentPlayer === 'tiger') {
+                handleTigerMove(row, col);
+            }
+        }
+
+        function placeGoat(row, col) {
+            gameState[row][col] = 'goat';
+            createPiece('goat', row, col);
+            goatsPlaced++;
+            if (goatsPlaced === 20) phase = 2;
+            updateUI();
+        }
+
+        function handleTigerMove(row, col) {
+            if (!selectedPiece) {
+                if (gameState[row][col] === 'tiger') {
+                    selectedPiece = { row, col };
+                    showPossibleMoves(row, col);
+                }
+            } else {
+                if (checkMoveValid(selectedPiece.row, selectedPiece.col, row, col)) {
+                    movePiece(selectedPiece.row, selectedPiece.col, row, col);
+                    currentPlayer = 'goat';
+                    checkWinConditions();
+                }
+                clearSelection();
+            }
+            updateUI();
+        }
+
+               // Audio Handling
+        let audioContext;
+        const enableAudio = () => {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        };
+
+        function playSound(type) {
+            if (!audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            const frequencies = {
+                place: [523, 0.3],
+                move: [659, 0.2],
+                capture: [392, 0.5],
+                win: [784, 1.0]
+            };
+            
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(frequencies[type][0], audioContext.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + frequencies[type][1]);
+            
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + frequencies[type][1]);
+        }
+
+        function handleMovementPhase(row, col) {
+            if (!selectedPiece) {
+                if (gameState[row][col] === currentPlayer) {
+                    selectedPiece = { row, col };
+                    showPossibleMoves(row, col);
+                }
+            } else {
+                if (checkMoveValid(selectedPiece.row, selectedPiece.col, row, col)) {
+                    movePiece(selectedPiece.row, selectedPiece.col, row, col);
+                    currentPlayer = currentPlayer === 'tiger' ? 'goat' : 'tiger';
+                    checkWinConditions();
+                }
+                clearSelection();
+            }
+            updateUI();
+        }
+
+        function showPossibleMoves(row, col) {
+            clearSuggestions();
+            const moves = getPossibleMoves(row, col);
+            
+            moves.forEach(move => {
+                const suggestion = document.createElement('div');
+                suggestion.className = 'suggestion';
+                suggestion.style.left = `${(move.col * 100 / (BOARD_SIZE - 1))}%`;
+                suggestion.style.top = `${(move.row * 100 / (BOARD_SIZE - 1))}%`;
+                board.appendChild(suggestion);
+            });
+
+            document.querySelectorAll('.piece').forEach(p => {
+                p.classList.remove('selected');
+                if (parseInt(p.dataset.row) === row && parseInt(p.dataset.col) === col) {
+                    p.classList.add('selected');
+                }
+            });
+        }
+
+        function getPossibleMoves(row, col) {
+            const moves = [];
+            const directions = [[-1,0], [1,0], [0,-1], [0,1]];
+            const piece = gameState[row][col];
+
+            // Regular moves
+            directions.forEach(([dr, dc]) => {
+                const newRow = row + dr;
+                const newCol = col + dc;
+                if (isValidPosition(newRow, newCol) && gameState[newRow][newCol] === 'empty') {
+                    moves.push({ row: newRow, col: newCol });
+                }
+            });
+
+            // Jump moves (tigers only)
+            if (piece === 'tiger') {
+                directions.forEach(([dr, dc]) => {
+                    const midRow = row + dr;
+                    const midCol = col + dc;
+                    const jumpRow = row + (dr * 2);
+                    const jumpCol = col + (dc * 2);
+                    
+                    if (isValidPosition(jumpRow, jumpCol) &&
+                        isValidPosition(midRow, midCol) &&
+                        gameState[midRow][midCol] === 'goat' &&
+                        gameState[jumpRow][jumpCol] === 'empty') {
+                        moves.push({ row: jumpRow, col: jumpCol });
+                    }
+                });
+            }
+
+            return moves;
+        }
+
+        function movePiece(fromRow, fromCol, toRow, toCol) {
+            // Capture logic
+            if (Math.abs(toRow - fromRow) === 2 || Math.abs(toCol - fromCol) === 2) {
+                const midRow = Math.floor((fromRow + toRow)/2);
+                const midCol = Math.floor((fromCol + toCol)/2);
+                if (gameState[midRow][midCol] === 'goat') {
+                    gameState[midRow][midCol] = 'empty';
+                    goatsCaptured++;
+                    document.querySelector(`.goat[data-row="${midRow}"][data-col="${midCol}"]`).remove();
+                }
+            }
+
+            // Update game state
+            const piece = gameState[fromRow][fromCol];
+            gameState[fromRow][fromCol] = 'empty';
+            gameState[toRow][toCol] = piece;
+
+            // Update DOM
+            const pieceElement = document.querySelector(`.piece[data-row="${fromRow}"][data-col="${fromCol}"]`);
+            pieceElement.dataset.row = toRow;
+            pieceElement.dataset.col = toCol;
+            pieceElement.style.left = `${(toCol * 100 / (BOARD_SIZE - 1))}%`;
+            pieceElement.style.top = `${(toRow * 100 / (BOARD_SIZE - 1))}%`;
+        }
+
+        function checkMoveValid(fromRow, fromCol, toRow, toCol) {
+            return getPossibleMoves(fromRow, fromCol).some(
+                move => move.row === toRow && move.col === toCol
+            );
+        }
+
+        function checkEarlyWin() {
+            if (areTigersTrapped()) {
+                setTimeout(() => {
+                    alert('Goats win! Tigers trapped during placement!');
+                    resetGame();
+                }, 10);
+            }
+        }
+
+        function checkWinConditions() {
+            if (goatsCaptured >= 5) {
+                setTimeout(() => {
+                    alert('Tigers win! Captured 5 goats!');
+                    resetGame();
+                }, 10);
+            } else if (areTigersTrapped()) {
+                setTimeout(() => {
+                    alert('Goats win! All tigers trapped!');
+                    resetGame();
+                }, 10);
+            }
+        }
+
+        function areTigersTrapped() {
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (gameState[row][col] === 'tiger' && getPossibleMoves(row, col).length > 0) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function resetGame() {
+            gameState = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill('empty'));
+            currentPlayer = 'goat';
+            phase = 1;
+            goatsPlaced = 0;
+            goatsCaptured = 0;
+            initBoard();
+            updateUI();
+        }
+
+        function clearSelection() {
+            selectedPiece = null;
+            clearSuggestions();
+            document.querySelectorAll('.selected').forEach(p => p.classList.remove('selected'));
+        }
+
+        function clearSuggestions() {
+            document.querySelectorAll('.suggestion').forEach(s => s.remove());
+        }
+
+        function isValidPosition(row, col) {
+            return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
+        }
+
+        function updateUI() {
+            info.textContent = phase === 1 
+                ? `Goats to Place: ${20 - goatsPlaced}` 
+                : `Goats Captured: ${goatsCaptured}`;
+
+            turnIndicator.className = `turn-indicator ${currentPlayer}-turn`;
+            turnIndicator.textContent = `${currentPlayer === 'tiger' ? '🐅 Tigers' : '🐐 Goats'} Turn`;
+        }
+        
+
+        // Start the game
+        initBoard();
+        updateUI();
+    </script>
+</body>
+</html>
